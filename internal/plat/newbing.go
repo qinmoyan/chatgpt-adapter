@@ -54,12 +54,7 @@ func (bot *BingBot) Reply(ctx types.ConversationContext) chan types.PartialRespo
 			options.Model = ctx.Model
 			options.Proxy = ctx.Proxy
 
-			chat, err := edge.New(options)
-			if err != nil {
-				message <- types.PartialResponse{Error: err}
-				return
-			}
-
+			chat := edge.New(options)
 			chat.TraceId = ctx.AppId
 			session = chat
 			bot.sessions[ctx.Id] = session

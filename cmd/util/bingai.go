@@ -29,13 +29,18 @@ func init() {
 }
 
 func DoBingAIComplete(ctx *gin.Context, token string, r *cmdtypes.RequestDTO) {
-	once := true
 	conversationMapper := make(map[string]*types.ConversationContext)
 	isDone := false
 	if token == "" || token == "auto" {
 		token = bingAIToken
 	}
 	fmt.Println("TOKEN_KEY: " + token)
+
+	defer func() {
+		for _, conversationContext := range conversationMapper {
+			cmdvars.Manager.Remove(conversationContext.Id, conversationContext.Bot)
+		}
+	}()
 
 	// 重试次数
 	retry := 3
@@ -83,6 +88,8 @@ label:
 			}
 
 			if len(response.Message) > 0 {
+				// 正常输出了，舍弃重试
+				retry = 0
 				select {
 				case <-ctx.Request.Context().Done():
 					isClose = true
@@ -108,15 +115,6 @@ label:
 			}
 		}
 	})
-
-	defer func() {
-		if once {
-			for _, conversationContext := range conversationMapper {
-				cmdvars.Manager.Remove(conversationContext.Id, conversationContext.Bot)
-			}
-			once = false
-		}
-	}()
 
 	// 发生错误了，重试一次
 	if partialResponse.Error != nil && retry > 0 {
@@ -253,6 +251,9 @@ func bingAIHandle(IsClose func() bool) types.CustomCacheHandler {
 				r := []rune(content)
 				eIndex := len(r) - 1
 				if index+4 > eIndex {
+					if index <= eIndex && r[index] != []rune("^")[0] {
+						return types.MAT_MATCHED, content
+					}
 					return types.MAT_MATCHING, content
 				}
 				regexCompile := regexp.MustCompile(`\[\d+]`)
@@ -279,6 +280,9 @@ func bingAIHandle(IsClose func() bool) types.CustomCacheHandler {
 				r := []rune(content)
 				eIndex := len(r) - 1
 				if index+4 > eIndex {
+					if index <= eIndex && r[index] != []rune("^")[0] {
+						return types.MAT_MATCHED, content
+					}
 					return types.MAT_MATCHING, content
 				}
 				regexCompile := regexp.MustCompile(`\(\^\d+\^\):`)

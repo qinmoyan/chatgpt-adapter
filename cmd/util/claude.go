@@ -56,13 +56,18 @@ type schema struct {
 }
 
 func DoClaudeComplete(ctx *gin.Context, token string, r *cmdtypes.RequestDTO) {
-	once := true
 	conversationMapper := make(map[string]*types.ConversationContext)
 	isDone := false
 	fmt.Println("TOKEN_KEY: " + token)
 
 	// 重试次数
 	retry := 3
+
+	defer func() {
+		for _, conversationContext := range conversationMapper {
+			cmdvars.Manager.Remove(conversationContext.Id, conversationContext.Bot)
+		}
+	}()
 
 label:
 	if isDone {
@@ -117,6 +122,8 @@ label:
 			}
 
 			if len(response.Message) > 0 {
+				// 正常输出了，舍弃重试
+				retry = 0
 				select {
 				case <-ctx.Request.Context().Done():
 					isClose = true
@@ -141,15 +148,6 @@ label:
 			}
 		}
 	})
-
-	defer func() {
-		if once {
-			for _, conversationContext := range conversationMapper {
-				cmdvars.Manager.Remove(conversationContext.Id, conversationContext.Bot)
-			}
-			once = false
-		}
-	}()
 
 	// 发生错误了，重试一次
 	if !isDone && partialResponse.Error != nil && retry > 0 {
