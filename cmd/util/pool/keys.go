@@ -20,7 +20,7 @@ import (
 
 var (
 	MINIMUM_SURVIVAL = 3    // 最小存活数
-	keys             []*Key // session池
+	Keys             []*Key // session池
 	currIndex        = -1
 	IsLocal          = false
 	mu               sync.Mutex
@@ -36,11 +36,11 @@ func init() {
 	_ = godotenv.Load()
 	MINIMUM_SURVIVAL = LoadEnvInt("MINIMUM_SURVIVAL", MINIMUM_SURVIVAL)
 	k := strings.TrimSpace(LoadEnvVar("KEYS", ""))
-	keys = make([]*Key, 0)
+	Keys = make([]*Key, 0)
 	if k != "" {
 		split := strings.Split(k, ",")
 		for _, key := range split {
-			keys = append(keys, &Key{strings.TrimSpace(key), false, nil})
+			Keys = append(Keys, &Key{strings.TrimSpace(key), false, nil})
 			IsLocal = true
 			cmdvars.EnablePool = true
 		}
@@ -50,7 +50,7 @@ func init() {
 	if cmdvars.EnablePool && !IsLocal {
 		ctoken := LoadEnvVar("CACHE_KEY", "")
 		if ctoken != "" {
-			keys = append(keys, &Key{ctoken, false, nil})
+			Keys = append(Keys, &Key{ctoken, false, nil})
 		}
 		go func() {
 			time.Sleep(3 * time.Second)
@@ -61,27 +61,28 @@ func init() {
 					return
 				}
 				// 删除
-				if len(keys) > 0 {
-					for index, key := range keys {
+				if len(Keys) > 0 {
+					for index, key := range Keys {
 						if key.IsDie {
 							logrus.Warn("发现缓存池sessionKey已失效: " + key.Token)
 							logrus.Warn("删除失效的缓存池sessionKey: ", key.Error)
-							keys = append(keys[:index], keys[index+1:]...)
+							Keys = append(Keys[:index], Keys[index+1:]...)
 						}
 					}
 				}
 				mu.Unlock()
 
 				// 新增
-				if len(keys) < MINIMUM_SURVIVAL {
+				if len(Keys) < MINIMUM_SURVIVAL {
 					_, token, err := GenerateSessionKey()
 					if err == nil {
 						mu.Lock()
 						logrus.Info("新增缓存池sessionKey: " + token)
-						keys = append(keys, &Key{token, false, nil})
+						Keys = append(Keys, &Key{token, false, nil})
 						mu.Unlock()
 						CacheKey("CACHE_KEY", token)
 					} else {
+						logrus.Warn("sessionKey:", token)
 						logrus.Warn("自动获取新的缓存池sessionKey失败:", err)
 					}
 				}
@@ -112,10 +113,14 @@ func GetKey() (string, error) {
 	}
 }
 
-func CurrError(err error) {
-	if err != nil && currIndex >= 0 {
-		keys[currIndex].IsDie = true
-		keys[currIndex].Error = err
+func CurrError(message string) {
+	if message != "" && currIndex >= 0 {
+		if message == "Exceeded completions limit" {
+			Keys[currIndex].IsDie = false
+		} else {
+			Keys[currIndex].IsDie = true
+		}
+		Keys[currIndex].Error = errors.New(message)
 	}
 }
 
@@ -123,7 +128,7 @@ func CurrError(err error) {
 func getLocalKey() (string, error) {
 	mu.Lock()
 	defer mu.Unlock()
-	l := len(keys)
+	l := len(Keys)
 	if l == 0 {
 		return "", errors.New("本地连接池sessionKey为空")
 	}
@@ -134,14 +139,16 @@ func getLocalKey() (string, error) {
 		if currIndex >= l {
 			currIndex = 0
 		}
-		key := keys[currIndex]
+		key := Keys[currIndex]
 		if key.IsDie {
 			err = key.Error
 			continue
 		}
 		// 测试是否可用
 		if err = TestMessage(key.Token); err != nil {
-			key.IsDie = true
+			if !strings.Contains(err.Error(), "Exceeded completions limit") {
+				key.IsDie = true
+			}
 			key.Error = err
 			continue
 		} else {
@@ -154,7 +161,7 @@ func getLocalKey() (string, error) {
 
 // 联网缓存smail获取到的sessionKey
 func getSmailKey() (string, error) {
-	l := len(keys)
+	l := len(Keys)
 	var err error
 
 	mu.Lock()
@@ -165,7 +172,7 @@ func getSmailKey() (string, error) {
 		if currIndex >= l {
 			currIndex = 0
 		}
-		key := keys[currIndex]
+		key := Keys[currIndex]
 		if key.IsDie {
 			err = key.Error
 			continue
@@ -185,7 +192,7 @@ func getSmailKey() (string, error) {
 	if err != nil {
 		return token, errors.New("缓存池内所有sessionKey均已失效：" + err.Error())
 	}
-	keys = append(keys, &Key{token, false, nil})
+	Keys = append(Keys, &Key{token, false, nil})
 	return token, err
 }
 
@@ -223,15 +230,26 @@ func TestMessage(token string) error {
 		return err
 	}
 	defer chat.Delete()
+	finalMessage := ""
 	for {
 		message, ok := <-partialResponse
 		if !ok {
+			if finalMessage == cmdvars.ViolatingPolicy {
+				return errors.New(cmdvars.ViolatingPolicy)
+			}
+			if strings.Contains(finalMessage, cmdvars.BAN) {
+				return errors.New(cmdvars.BAN)
+			}
+			if strings.Contains(finalMessage, cmdvars.HARM) {
+				return errors.New(cmdvars.HARM)
+			}
 			return nil
 		}
 
 		if message.Error != nil {
 			return message.Error
 		}
+		finalMessage += message.Text
 	}
 }
 

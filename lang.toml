@@ -12,7 +12,11 @@ en = "The network is disconnected, please check your agent"
 
 [HARM]
 zh = "检测到大黄标（harm），下次请求将刷新cookie !"
-en = "Rhubarb label (harm) detected, cookie will be refreshed on next request !"
+en = "Rhubarb label (harm) detected, cookie will be refreshed on next request!"
+
+[BAN]
+zh = "检测到BAN号（disabled），下次请求将刷新cookie !"
+en = "BAN account (disabled) detected, cookie will be refreshed on next request!"
 
 [ACCOUNT_LOCKED]
 zh = "检测到账户被锁定，请尝试重新生成文本"

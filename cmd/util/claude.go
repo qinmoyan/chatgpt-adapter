@@ -25,9 +25,6 @@ import (
 var (
 	muLock sync.Mutex
 
-	HARM            = "I apologize, but I will not provide any responses that violate Anthropic's Acceptable Use Policy or could promote harm."
-	ViolatingPolicy = "Your account has been disabled for violating Anthropic's Acceptable Use Policy."
-
 	H = "H:"
 	A = "A:"
 	S = "System:"
@@ -56,6 +53,12 @@ type schema struct {
 }
 
 func DoClaudeComplete(ctx *gin.Context, token string, r *cmdtypes.RequestDTO) {
+
+	// ping 打印本地池的可用情况
+	if pingRef(ctx, r) {
+		return
+	}
+
 	conversationMapper := make(map[string]*types.ConversationContext)
 	isDone := false
 	fmt.Println("TOKEN_KEY: " + token)
@@ -162,13 +165,17 @@ label:
 	}
 
 	// 违反政策被禁用
-	if strings.Contains(partialResponse.Message, ViolatingPolicy) {
-		pool.CurrError(errors.New(ViolatingPolicy))
+	if strings.Contains(partialResponse.Message, cmdvars.ViolatingPolicy) {
+		pool.CurrError(cmdvars.ViolatingPolicy)
 		CleanToken(token)
 		if !isDone && retry > 0 {
 			logrus.Warn("重试中...")
 			goto label
 		}
+	} else if strings.Contains(partialResponse.Message, cmdvars.BAN) {
+		CleanToken(token)
+		pool.CurrError(cmdvars.BAN)
+		logrus.Warn(cmdvars.I18n("BAN"))
 	}
 
 	// 非流响应
@@ -182,14 +189,55 @@ label:
 		ctx.JSON(200, BuildCompletion(partialResponse.Message))
 	}
 
-	// 检查大黄标
+	// 检查大黄标, BAN号
 	if token == "auto" && context.Model == vars.Model4WebClaude2S {
-		if strings.Contains(partialResponse.Message, HARM) {
+		if strings.Contains(partialResponse.Message, cmdvars.HARM) {
 			CleanToken(token)
-			pool.CurrError(errors.New(HARM))
+			pool.CurrError(cmdvars.HARM)
 			logrus.Warn(cmdvars.I18n("HARM"))
+		} else if strings.Contains(partialResponse.Message, cmdvars.BAN) {
+			CleanToken(token)
+			pool.CurrError(cmdvars.BAN)
+			logrus.Warn(cmdvars.I18n("BAN"))
 		}
 	}
+}
+
+// 如果是ping指令，打印本地池的使用情况
+func pingRef(ctx *gin.Context, r *cmdtypes.RequestDTO) bool {
+	messageL := len(r.Messages)
+	if messageL == 0 {
+		return false
+	}
+	// 找最后一条用户发言
+	for i := messageL - 1; i >= 0; i-- {
+		message := r.Messages[i]
+		if message["role"] == "user" {
+			if message["content"] != "/ping" {
+				return false
+			}
+			break
+		}
+	}
+
+	if cmdvars.EnablePool && pool.IsLocal {
+
+		shortVal := func(val string) string {
+			return val[:5] + "***" + val[len(val)-10:]
+		}
+
+		markdown := "SESSION KEY使用如下：\n| KEY | DIE | ERROR |\n| ----------- | ----------- | ----------- |\n"
+		for _, key := range pool.Keys {
+			err := ""
+			if key.Error != nil {
+				err = key.Error.Error()
+			}
+			markdown += "| " + shortVal(key.Token) + " | " + strconv.FormatBool(key.IsDie) + " | " + err + " |\n"
+		}
+		SSEString(ctx, markdown)
+		return true
+	}
+	return false
 }
 
 // 构建claude-2.0上下文
@@ -206,16 +254,6 @@ func createClaudeConversation(token string, r *cmdtypes.RequestDTO, IsClose func
 		id = "claude-" + uuid.NewString()
 		bot = vars.Claude
 		model = vars.Model4WebClaude2S
-	case "claude-1.0", "claude-1.2", "claude-1.3":
-		id = "claude-slack"
-		bot = vars.Claude
-		split := strings.Split(token, ",")
-		token = split[0]
-		if len(split) > 1 {
-			appId = split[1]
-		} else {
-			return nil, errors.New("请在请求头中提供appId")
-		}
 	default:
 		return nil, errors.New(cmdvars.I18n("UNKNOWN_MODEL") + "`" + r.Model + "`")
 	}
@@ -280,8 +318,8 @@ func trimClaudeMessage(r *cmdtypes.RequestDTO) (string, schema, error) {
 	if len(r.Messages) == 0 {
 		return result, s, errors.New(cmdvars.I18n("MESSAGES_EMPTY"))
 	} else {
-		// 将repository的内容往上挪
-		repositoryXmlHandle(r)
+		// 知识库上移
+		postRef(r)
 
 		// ====  Schema匹配 =======
 		compileRegex := regexp.MustCompile(`schema\s?\{[^}]*}`)
@@ -298,8 +336,8 @@ func trimClaudeMessage(r *cmdtypes.RequestDTO) (string, schema, error) {
 
 		optimize := func(text string, s schema) string {
 			// ==== I apologize,[^\n]+ 道歉匹配 ======
-			cR := regexp.MustCompile(`I apologize[^\n]+`)
-			text = cR.ReplaceAllString(text, "")
+			reg := regexp.MustCompile(`I apologize[^\n]+`)
+			text = reg.ReplaceAllString(text, "")
 			// =========================
 
 			if s.TrimAssistant {

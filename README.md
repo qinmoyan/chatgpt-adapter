@@ -130,7 +130,12 @@ tips：
 
    
 
-New: 
+New:
+（2023-11-28）适配新模型`claude-2.1`、`claude-2.0-magenta`，添加`/ping`指令
+
+<details>
+<img src="resources/%E6%88%AA%E5%B1%8F2023-11-28%2007.03.25.png"  />
+</details>
 
 （2023-09-11）已适配open ai api请求格式，可接入到基于opanai的任何app或者web
 收罗了一些别人搭建好的：

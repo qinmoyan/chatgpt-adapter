@@ -28,52 +28,44 @@ func CleanToken(token string) {
 	}
 }
 
-// 将repository的内容往上挪
-func repositoryXmlHandle(r *cmdtypes.RequestDTO) {
-	if l := len(r.Messages); l > 2 {
+// 将知识库的内容往上挪
+func postRef(r *cmdtypes.RequestDTO) {
+	if messageL := len(r.Messages); messageL > 2 {
 		pos := 2 // 1次
 		// 最多上挪3次对话
-		if l > 4 {
+		if messageL > 4 {
 			pos = 4 // 2次
 		}
-		if l > 6 {
+		if messageL > 6 {
 			pos = 6 // 3次
 		}
 
 		var slice []string
+		content := r.Messages[messageL-1]["content"]
 		for {
-			content := r.Messages[l-1]["content"]
-			lIdx := strings.Index(content, "<repository>")
-			rIdx := strings.Index(content, "</repository>")
-			if lIdx < 0 {
+			start := strings.Index(content, "<postRef>")
+			end := strings.Index(content, "</postRef>")
+			if start < 0 {
 				break
 			}
-			if lIdx < rIdx {
-				context := content[lIdx : rIdx+13]
-				r.Messages[l-1]["content"] = strings.Replace(content, context, "", -1)
-				slice = append(slice, context)
+			if start < end {
+				slice = append(slice, content[start+9:end])
+				content = content[:start] + content[end+10:]
 			}
 		}
+		r.Messages[messageL-1]["content"] = content
 
-		if sl := len(slice); sl > 0 {
-			if sl > 1 {
-				for idx, context := range slice {
-					idxStr := strconv.Itoa(idx + 1)
-					context = strings.Replace(context, "<repository>", "<repository-"+idxStr+">", -1)
-					context = strings.Replace(context, "</repository>", "</repository-"+idxStr+">", -1)
-					slice[idx] = context
-				}
-			}
+		if len(slice) > 0 {
 			prefix := "System: "
 			if r.Model != "claude-2.0" {
 				prefix = ""
 			}
-			r.Messages = append(r.Messages[:l-pos], append([]map[string]string{
+			r.Messages = append(r.Messages[:messageL-pos], append([]map[string]string{
 				{
 					"role":    "user",
 					"content": prefix + strings.Join(slice, "\n\n"),
 				},
-			}, r.Messages[l-pos:]...)...)
+			}, r.Messages[messageL-pos:]...)...)
 		}
 	}
 }

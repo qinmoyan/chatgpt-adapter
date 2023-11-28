@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 )
 
 var (
@@ -91,12 +92,23 @@ func (bot *OpenAIAPIBot) makeCompletionStream(timeout context.Context, ctx types
 	if model == "" {
 		model = openai.GPT3Dot5Turbo
 	}
+	// 适配fastgpt参数传递
+	var variables map[string]string = nil
+	if strings.Contains(ctx.Preset, "<!VARS!>") {
+		variables = make(map[string]string)
+		variables["name"] = ctx.Name
+		variables["cName"] = ctx.CName
+		variables["character"] = strings.Replace(ctx.Preset, "<!VARS!>", "", -1)
+		ctx.Preset = ""
+	}
+
 	request := openai.ChatCompletionRequest{
 		Model:    model,
 		Messages: bot.completionMessage(ctx),
 		//MaxTokens:   ctx.MaxTokens,
 		Temperature: ctx.Temperature,
 		Stream:      true,
+		Variables:   variables,
 	}
 	if bot.client == nil || bot.token != ctx.Token {
 		bot.makeClient(ctx.BaseURL, ctx.Proxy, ctx.Token)

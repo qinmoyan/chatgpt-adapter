@@ -387,9 +387,8 @@ func bingAIMessageConversion(r *cmdtypes.RequestDTO) ([]store.Kv, string) {
 
 	// 分类问题，特殊处理
 	classifyQuestion(r)
-
-	// 将repository的内容往上挪
-	repositoryXmlHandle(r)
+	// 知识库上移
+	postRef(r)
 
 	// 遍历归类
 	for _, item := range r.Messages {
@@ -468,7 +467,7 @@ func classifyQuestion(r *cmdtypes.RequestDTO) {
 		return
 	}
 	content := r.Messages[0]["content"]
-	if strings.Contains(content, "<!CQ>") {
+	if strings.Contains(content, "<!CQ!>") {
 		messages := make([]map[string]string, 0)
 		messages = append(messages, map[string]string{
 			"role":    "user",
@@ -478,7 +477,7 @@ func classifyQuestion(r *cmdtypes.RequestDTO) {
 			"role":    "assistant",
 			"content": "我明白，你想让我帮你对问题进行分类。请告诉我你的问题，我会尽力给你一个合适的类别。😊",
 		})
-		r.Messages[0]["content"] = strings.Replace(content, "<!CQ>", "", -1)
+		r.Messages[0]["content"] = strings.Replace(content, "<!CQ!>", "", -1)
 		messages = append(messages, r.Messages[0])
 		r.Messages = messages
 	}

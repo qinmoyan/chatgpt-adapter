@@ -14,6 +14,8 @@ type ConversationContext struct {
 	Bot         string  // AI机器人类型
 	Prompt      string  // 文本
 	Token       string  // 凭证
+	Name        string  // 用户名称
+	CName       string  // 预设名称
 	Preset      string  // 预设模版
 	Format      string  // 消息模板
 	AppId       string  // 设备Id（claude/bing？）

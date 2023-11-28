@@ -28,10 +28,11 @@ var (
 )
 
 const (
-	VERSION = "v1.0.12"
+	VERSION = "v1.0.13"
 )
 
 func main() {
+	logrus.SetLevel(logrus.InfoLevel)
 	_ = godotenv.Load()
 	cmdvars.GlobalPadding = cmdutil.LoadEnvVar("PADDING", "")
 	cmdvars.GlobalPaddingSize = cmdutil.LoadEnvInt("PADDING_SIZE", 35000)
@@ -155,7 +156,10 @@ func genSessionKeys() {
 		}
 		err = pool.TestMessage(token)
 		if err != nil {
-			// logrus.Error("Error: ", email, err)
+			logrus.Warn("[retry...]: ", email, err)
+			if strings.Contains(err.Error(), "Invalid model") {
+
+			}
 			if cnt > 0 {
 				cnt--
 				goto label
@@ -172,7 +176,6 @@ func index(ctx *gin.Context) {
 func models(ctx *gin.Context) {
 	ctx.JSON(200, gin.H{
 		"data": []gin.H{
-			{"id": "claude-1.0"},
 			{"id": "claude-2.0"},
 			{"id": "BingAI"},
 		},

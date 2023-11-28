@@ -27,6 +27,10 @@ var (
 
 	EnablePool bool
 	Gen        bool
+
+	ViolatingPolicy = "Your account has been disabled for violating Anthropic's Acceptable Use Policy."
+	HARM            = "I apologize, but I will not provide any responses that violate Anthropic's Acceptable Use Policy or could promote harm."
+	BAN             = "Your account has been disabled after an automatic review of your recent activities that violate our Terms of Service."
 )
 
 func init() {
